@@ -1,0 +1,11 @@
+.next/
+node_modules/
+
+# Local and production secrets must never be committed.
+.env
+.env.*
+!.env.example
+
+npm-debug.log*
+*.tsbuildinfo
+.DS_Store
