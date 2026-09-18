@@ -82,12 +82,20 @@ function normalizeMessages(value: unknown): ChatMessage[] | null {
   return messages.some((message) => message.role === "user") ? messages : null;
 }
 
-function providerEndpoint(baseUrl: string) {
+function providerEndpoint(baseUrl: string, model: string) {
   try {
     const url = new URL(baseUrl);
     const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
 
     if (url.protocol !== "https:" && !(isLocal && url.protocol === "http:")) {
+      return null;
+    }
+
+    const normalizedPath = url.pathname.replace(/\/+$/, "") || "/";
+    if (
+      model.startsWith("gpt-") &&
+      (url.hostname !== "api.openai.com" || normalizedPath !== "/v1")
+    ) {
       return null;
     }
 
@@ -181,13 +189,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const endpoint = providerEndpoint(baseUrl);
+  if (!/^[\x21-\x7E]+$/.test(apiKey)) {
+    return jsonError(
+      503,
+      "CONFIGURATION_ERROR",
+      "AVENIDY 的 AI 金鑰格式不正確。",
+      "請將 AI_API_KEY 的示意文字替換成供應商提供的真正 API 金鑰；請勿加入引號、空格或中文。"
+    );
+  }
+
+  const endpoint = providerEndpoint(baseUrl, model);
   if (!endpoint) {
     return jsonError(
       503,
       "CONFIGURATION_ERROR",
       "AVENIDY 的 AI 服務網址設定無效。",
-      "請管理員檢查伺服器端的 AI_BASE_URL；正式環境應使用 HTTPS。"
+      "請檢查 AI_BASE_URL；若 AI_MODEL 使用 OpenAI 的 gpt- 模型，請將網址完整填為 https://api.openai.com/v1。"
     );
   }
 
