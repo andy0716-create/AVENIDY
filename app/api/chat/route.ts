@@ -129,6 +129,17 @@ function extractText(data: unknown) {
   return null;
 }
 
+function providerNetworkErrorCode(error: unknown) {
+  if (!(error instanceof Error)) return undefined;
+
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (!cause || typeof cause !== "object" || !("code" in cause)) {
+    return undefined;
+  }
+
+  return typeof cause.code === "string" ? cause.code : undefined;
+}
+
 export async function POST(req: NextRequest) {
   let body: unknown;
 
@@ -211,13 +222,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const networkCode = providerNetworkErrorCode(error);
+
     console.error("[api/chat] provider request failed", {
       name: error instanceof Error ? error.name : "UnknownError",
+      code: networkCode,
     });
+
+    if (networkCode === "ENOTFOUND" || networkCode === "EAI_AGAIN") {
+      return jsonError(
+        503,
+        "PROVIDER_DNS_ERROR",
+        "目前找不到 AI 服務主機。",
+        "請確認 Vercel 的 AI_BASE_URL 完整且正確；若使用 OpenAI，請填 https://api.openai.com/v1。"
+      );
+    }
+
+    if (
+      networkCode === "UND_ERR_CONNECT_TIMEOUT" ||
+      networkCode === "ETIMEDOUT"
+    ) {
+      return jsonError(
+        504,
+        "PROVIDER_TIMEOUT",
+        "AI 服務連線逾時，請稍後再試。"
+      );
+    }
+
     return jsonError(
       503,
       "PROVIDER_UNAVAILABLE",
-      "目前無法連線到 AI 服務，請稍後再試。"
+      "目前無法連線到 AI 服務，請稍後再試。",
+      "請確認 Vercel 的 AI_BASE_URL 是供應商的 API 基底網址，且未包含 /chat/completions。"
     );
   } finally {
     clearTimeout(timeout);
